@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(mil)
+project(milandr_server)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,26 +16,29 @@ find_path(BOOST_INCLUDE_DIR
 # Экспорт команд для Zed (чтобы работало автодополнение)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_executable(mil
+add_executable(milandr_server
   src/main.cpp
   src/CssWork.cpp
         src/Server.cpp
         include/Server.h
+        src/ClientSession.cpp
+        include/ClientSession.h
+        include/GroupData.h
 )
 
-target_include_directories(mil PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(milandr_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(
-        mil PRIVATE
+        milandr_server PRIVATE
         ${BOOST_INCLUDE_DIR}
         src
 )
 
-target_link_libraries(mil
+target_link_libraries(milandr_server
         ${Boost_LIBRARIES}
 )
 
 # Говорим Beast использовать std::error_code вместо boost::system::error_code
-target_compile_definitions(mil PRIVATE
+target_compile_definitions(milandr_server PRIVATE
         BOOST_BEAST_USE_STD_ERIC=1
         BOOST_ASIO_USE_STD_ERIC=1
 )
