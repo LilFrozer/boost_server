@@ -9,6 +9,7 @@
 
 namespace CONNECTION
 {
+    const std::string SERVER_ADDR{"192.168.1.73"};
     const uint16_t SERVER_HASH = 0x1337;
     const uint16_t SERVER_PORT = 1122;
 
@@ -51,7 +52,7 @@ using vecUint8 = std::vector<uint8_t>;
 /**
  * bruhhh
  */
-class BoostClientSession : public IClientSession, std::enable_shared_from_this<BoostClientSession>
+class BoostClientSession : public IClientSession, public std::enable_shared_from_this<BoostClientSession>
 {
 private:
     tcpSock socket_{nullptr};

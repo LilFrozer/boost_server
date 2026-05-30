@@ -11,37 +11,28 @@ BoostClientSession::BoostClientSession(tcpSock socket) : socket_(std::move(socke
 
 void BoostClientSession::start_session()
 {
-    shared_from_this()->async_read();
+    this->async_read();
 }
 
-void BoostClientSession::async_read()
-{
-    size_t sizeH = 4;   // headerSize == 4bytes
-
-    /*
-     *  !!!READING SIZE && READING FULL PACKET USING SIZE!!!
-     */
-    boost::asio::async_read(this->socket_,
-                    boost::asio::buffer(&(this->size_), sizeH),
-                    [this](boost::system::error_code ec, size_t)
-    {
-        if ( !ec ) {
-            this->buffer_.resize(this->size_);
-            boost::asio::async_read(this->socket_,
-            boost::asio::buffer(this->buffer_),
-            [this](boost::system::error_code ec, size_t)
-            {
-                if ( !ec ) {
-                    this->process_packet();
-                    this->async_read();
-                } else {
-                    std::cerr << "ec -> " << ec.message() << std::endl;
-                }
-            });
-        } else {
-            std::cerr << "ec -> " << ec.message() << std::endl;
-        }
-    });
+void BoostClientSession::async_read() {
+    auto self = shared_from_this();
+    boost::asio::async_read(socket_, boost::asio::buffer(&size_, sizeof(size_)),
+        [this, self](boost::system::error_code ec, size_t) {
+            if (ec == boost::asio::error::eof) {
+                std::cout << "Client disconnected" << std::endl;
+                return;
+            }
+            buffer_.resize(size_);
+            boost::asio::async_read(socket_, boost::asio::buffer(buffer_),
+                [this, self](boost::system::error_code ec, size_t) {
+                    if (ec) {
+                        std::cerr << "Body read error: " << ec.message() << std::endl;
+                        return;
+                    }
+                    process_packet();
+                    async_read();
+                });
+        });
 }
 
 void BoostClientSession::process_packet()
@@ -94,6 +85,9 @@ void BoostClientSession::process_packet()
             }
             std::cout << std::endl;
             break;
+        }
+        default: {
+            std::cerr << "wtf is this data" << std::endl;
         }
     }
 }

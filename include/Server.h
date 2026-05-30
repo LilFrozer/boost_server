@@ -18,6 +18,7 @@ private:
     std::array<char, 1024> udpRecvBuf_{};
 private:
     tcpNamespace::acceptor tcpAcceptor_;
+public:
     void listen_tcp();
 private:
     // void start_receive()
@@ -58,7 +59,8 @@ private:
     //     }
     // }
 public:
-    Server(boost::asio::io_context& io_context, unsigned Port);
+    Server(boost::asio::io_context& io_context, const std::string &addr, const uint16_t &port);
+    ~Server();
 };
 
 
