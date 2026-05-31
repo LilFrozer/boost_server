@@ -36,7 +36,18 @@ void Server::listen_tcp()
         {
             if ( !ec ) {
                 std::cout << "Client connected" << std::endl;
+                tcp_data::FirstData fd{};
+                boost::system::error_code ec;
+                auto remote_ep = socket.remote_endpoint(ec);
+                if (!ec) {
+                    std::string ip = remote_ep.address().to_string();
+                    fd.client_addr = ip;
+                    u16 port = remote_ep.port();
+                    fd.client_port = port;
+                    std::cout << "Remote: " << fd.client_addr  << ":" << fd.client_port << std::endl;
+                }
                 auto cl = std::make_shared<BoostClientSession>(std::move(socket));
+                cl->async_send(proto_project::dte::FirstData, fd.serialize());
                 cl->start_session();
             }
             this->listen_tcp();

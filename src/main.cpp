@@ -10,8 +10,8 @@ int main()
     try {
         boost::asio::io_context io_context;
         std::shared_ptr<Server> s = std::make_shared<Server>(io_context, \
-            CONNECTION::SERVER_ADDR, \
-            CONNECTION::SERVER_PORT);
+            proto_project::kServerAddr, \
+            proto_project::kServerPort);
         io_context.run();
     } catch (const std::exception &e) {
         std::cerr << e.what() << std::endl;

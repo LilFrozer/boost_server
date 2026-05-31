@@ -2,19 +2,65 @@
 // Created by Алексей Подоплелов on 26.05.2026.
 //
 
-#ifndef MIL_GROUPDATA_H
-#define MIL_GROUPDATA_H
+#ifndef GROUPDATA_H
+#define GROUPDATA_H
 
 #include <vector>
 #include <cstdint>
 
-namespace TCP_DATA
-{
-enum class DataTypes : uint16_t
-{
-    TestStruct = 0x0
-};
+using str = std::string;
+using u32 = unsigned;
+using u16 = uint16_t;
+using u8 = uint8_t;
+using vU8 = std::vector<uint8_t>;
+static_assert(sizeof(u32)==4, "sizeof(u32)!=4");
+static_assert(sizeof(u16)==2, "sizeof(u16)!=2");
+static_assert(sizeof(u8)==1, "sizeof(u8)!=1");
 
+namespace tcp_data {
+// При помещении в буфер строки при сериализации сначала кладем длину, а затем уже объект
+// htonl/ntohl -> для того, чтоб передавать корректно на устройство с другой архитектурой
+enum class DataTypes : u16
+{
+    TestStruct = 0x0,
+    FirstData = 0x1
+};
+// -> client opening udp socket with this info
+struct FirstData {
+    str client_addr{""};
+    u16 client_port{0};
+    // ...
+    vU8 serialize() const {
+        vU8 buffer{};
+        u32 cl_addr_len = htonl(this->client_addr.length());
+        buffer.insert(buffer.end(), reinterpret_cast<u8*>(&cl_addr_len),
+            reinterpret_cast<u8*>(&cl_addr_len) + 4);
+        buffer.insert(buffer.end(), client_addr.begin(), client_addr.end());
+
+        u16 cl_port = this->client_port;
+        buffer.insert(buffer.end(), reinterpret_cast<u8*>(&cl_port),
+            reinterpret_cast<u8*>(&cl_port) + 2);
+
+        return buffer;
+    }
+    static FirstData deserialize(const u8 *buffer) {
+        FirstData res;
+
+        u32 offset = 0;
+        u32 cl_addr_len{0};
+        memcpy(&cl_addr_len, buffer + offset, 4);
+        cl_addr_len = ntohl(cl_addr_len);
+        offset += 4;
+        res.client_addr.assign(reinterpret_cast<const char*>(buffer + offset), cl_addr_len);
+        offset += cl_addr_len;
+
+        u16 cl_port{0};
+        memcpy(&cl_port, buffer + offset, 2);
+        res.client_port = cl_port;
+
+        return res;
+    }
+};
 struct TestStruct
 {
     std::string a{""};
@@ -22,9 +68,6 @@ struct TestStruct
     double c{0.00};
     std::vector<int> d{};
 
-    /**
-     * @brief Сериализация в std::vector<uint8_t>
-     */
     std::vector<uint8_t> serilize() const
     {
         std::vector<uint8_t> buffer;
@@ -62,9 +105,6 @@ struct TestStruct
         return buffer;
     }
 
-    /**
-     * @brief Десериализация из const uint8_t
-     */
     static TestStruct deserialize(const uint8_t* data)
     {
         TestStruct result;
@@ -73,7 +113,7 @@ struct TestStruct
         // !!!ntohl -> from big_endian!!!
 
         // lent(str) + str
-        uint32_t str_len;
+        u32 str_len;
         memcpy(&str_len, data + offset, 4);
         str_len = ntohl(str_len);
         offset += 4;

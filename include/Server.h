@@ -2,8 +2,8 @@
 // Created by Алексей Подоплелов on 16.04.2026.
 //
 
-#ifndef MIL_SERVER_H
-#define MIL_SERVER_H
+#ifndef SERVER_H
+#define SERVER_H
 
 #include <ClientSession.h>
 
