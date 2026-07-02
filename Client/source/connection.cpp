@@ -1,0 +1,209 @@
+#include "connection.h"
+
+BoostConnection::BoostConnection(boost::asio::io_context &io_context) :
+    socket_{io_context},
+    resolver_{io_context}
+{
+    std::cout << "initializing Iserver" << std::endl;
+}
+
+BoostConnection::~BoostConnection()
+{
+    this->disconnect();
+}
+
+void BoostConnection::connect(const str &host, const u16 port)
+{
+    try
+    {
+        resolver_.async_resolve(host, std::to_string(port), [this](boost::system::error_code ec, tcpNamespace::resolver::results_type endpoints)
+        {
+            if( ec )
+            {
+                this->handle_error(ec, "resolve");
+                return;
+            }
+            boost::asio::async_connect(socket_, endpoints, [this](boost::system::error_code ec, tcpNamespace::endpoint)
+            {
+                if( ec )
+                {
+                    this->handle_error(ec, "connect");
+                }
+                else
+                {
+                    std::cout << "Connected to server!" << std::endl;
+                    this->async_read();
+                }
+             });
+        });
+    } catch (const std::exception &e) {
+        std::cout << e.what() << std::endl;
+    }
+}
+
+void BoostConnection::async_read() {
+    auto self = shared_from_this();
+    boost::asio::async_read(socket_, boost::asio::buffer(&size_, sizeof(size_)),
+        [this, self](boost::system::error_code ec, size_t) {
+        if (ec == boost::asio::error::eof) {
+            std::cerr << "Client disconnected" << std::endl;
+            return;
+        }
+        buffer_.resize(size_);
+        boost::asio::async_read(socket_, boost::asio::buffer(buffer_),
+        [this, self](boost::system::error_code ec, size_t) {
+            if (ec) {
+                std::cerr << "Body read error: " << ec.message() << std::endl;
+                return;
+            }
+            this->process_packet();
+            this->async_read();
+        });
+    });
+}
+
+void BoostConnection::process_packet() {
+    unsigned offset = 0;
+
+    proto_project::Packet pkt;
+    memcpy(&pkt.header.server_hash, &(this->buffer_)[offset], 2);
+    offset += 2;
+    memcpy(&pkt.header.total_data_size, &(this->buffer_)[offset], 4);
+    offset += 4;
+    memcpy(&pkt.header.total_cnt_packets, &(this->buffer_)[offset], 2);
+    offset += 2;
+    memcpy(&pkt.header.cur_packet_number, &(this->buffer_)[offset], 2);
+    offset += 2;
+    memcpy(&pkt.header.cur_packet_size, &(this->buffer_)[offset], 2);
+    offset += 2;
+    uint8_t flags = (this->buffer_)[offset];
+    pkt.header.isFirst = (flags & 0x01) ? 1 : 0;
+    pkt.header.isLast = (flags & 0x02) ? 1 : 0;
+    offset += 2;
+    memcpy(&pkt.d_type, &(this->buffer_)[offset], 2);
+    offset += 2;
+
+    pkt.buffer.assign((this->buffer_).begin() + offset, (this->buffer_).end());
+
+    if ( pkt.header.server_hash != proto_project::kServerHash ) {
+        std::cerr << "ERROR -> != kServerHash" << std::endl;
+        return;
+    }
+
+    if ( pkt.header.isFirst != 1 || pkt.header.isLast != 1 ) {
+        std::cerr << "ERROR -> !flags" << std::endl;
+        return;
+    }
+
+    switch (pkt.d_type) {
+    case tcp_data::DataTypes::TestStruct:
+    {
+        tcp_data::TestStruct a = tcp_data::TestStruct::deserialize(pkt.buffer.data());
+        std::cout << "---TestStruct---" << std::endl;
+        std::cout << a.a << std::endl;
+        std::cout << a.b << std::endl;
+        std::cout << a.c << std::endl;
+        for (size_t i=0;i<a.d.size();++i) {
+            std::cout << a.d[i] << " ";
+        }
+        std::cout << std::endl;
+        break;
+    }
+    case tcp_data::DataTypes::FirstData: {
+        tcp_data::FirstData a = tcp_data::FirstData::deserialize(pkt.buffer.data());
+        std::cout << "addr=" << a.client_addr << std::endl;
+        std::cout << "port=" << a.client_port << std::endl;
+        break;
+    }
+    default: {
+        std::cerr << "wtf is this data" << std::endl;
+        break;
+    }
+    }
+}
+
+void BoostConnection::disconnect()
+{
+    if( socket_.is_open() )
+    {
+        boost::system::error_code ec;
+        socket_.shutdown(tcpNamespace::socket::shutdown_both, ec);
+        socket_.close(ec);
+    }
+
+    std::cout << "Connection`s disconnect" << std::endl;
+}
+
+void BoostConnection::async_write(proto_project::dpt data_type, const vU8 &buffer)
+{
+    if( !socket_.is_open() )
+    {
+        std::cerr << "Connect to server for send!" << std::endl;
+        return;
+    }
+
+    proto_project::Packet pkt{};
+    pkt.d_type = data_type;
+    pkt.header.server_hash = proto_project::kServerHash;
+    pkt.header.total_data_size = buffer.size();
+    pkt.header.total_cnt_packets = 1;
+    pkt.header.cur_packet_number = 1;
+    pkt.header.cur_packet_size = buffer.size() + sizeof(u16) + sizeof(proto_project::phr);
+    pkt.header.isFirst = 1;
+    pkt.header.isLast = 1;
+    pkt.buffer = buffer;
+
+    vU8 full_packet = proto_project::Packet::serialize(pkt);
+
+    u32 packet_size = static_cast<u32>(full_packet.size());
+    std::vector<boost::asio::const_buffer> buffers;
+    buffers.push_back(boost::asio::buffer(&packet_size, 4));
+    buffers.push_back(boost::asio::buffer(full_packet));
+
+    std::cout << "p_size=" << packet_size << std::endl;
+
+
+    boost::asio::async_write(socket_, buffers, [this](boost::system::error_code ec, size_t length)
+    {
+        if( ec )
+        {
+            handle_error(ec, "send");
+        }
+        else
+        {
+            std::cout << "Отправлено " << length << " байт" << std::endl;
+        }
+    });
+
+    std::cout << "Отправлен пакет #" << pkt.header.cur_packet_number
+              << "/" << pkt.header.total_cnt_packets
+              << ", размер: " << buffers.size() << " байт" << std::endl;
+}
+
+void BoostConnection::handle_error(const boost::system::error_code& ec, const std::string& context)
+{
+    if( ec == boost::asio::error::eof )
+    {
+        std::cout << "Connection closed by server" << std::endl;
+        this->disconnect();
+    }
+    else if( ec == boost::asio::error::connection_reset)
+    {
+        std::cout << "Connection reset by server" << std::endl;
+        this->disconnect();
+    }
+    else if( ec == boost::asio::error::connection_aborted)
+    {
+        std::cout << "Connection aborted" << std::endl;
+        this->disconnect();
+    }
+    else if( ec == boost::asio::error::broken_pipe)
+    {
+        std::cout << "Connection (broken pipe)" << std::endl;
+        this->disconnect();
+    }
+    else
+    {
+        std::cout << "Error in: " << context << " ;ec = " << ec.message() << std::endl;
+    }
+}
